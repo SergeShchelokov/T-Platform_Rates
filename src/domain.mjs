@@ -67,6 +67,15 @@ export function lockReason(version, day = today()) {
   return "";
 }
 
+export function versionDeletionReason(rate, version, day = today()) {
+  return (
+    lockReason(version, day) ||
+    (rate.versions.length <= 1
+      ? "Нельзя удалить единственную версию тарифа. Сначала создайте новую"
+      : "")
+  );
+}
+
 export function versionErrors(draft, versions = [], day = today()) {
   /** @type {Record<string, string>} */
   const errors = {};

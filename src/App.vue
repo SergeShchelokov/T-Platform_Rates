@@ -18,6 +18,7 @@ import {
   dailyAmount,
   orderedVersions,
   lockReason,
+  versionDeletionReason,
   versionErrors,
   newVersionDraft,
   savedVersion,
@@ -30,11 +31,12 @@ if (!Array.isArray(rates.value) || !rates.value.every(isRate)) {
   storageError.value =
     "Не удалось прочитать сохранённые тарифы. Сохранённые данные доступны в хранилище браузера.";
 } else {
+  const populatedRates = rates.value.filter((rate) => rate.versions.length > 0);
   const missingExamples = demoRates().filter(
-    (example) => !rates.value.some((rate) => rate.id === example.id),
+    (example) => !populatedRates.some((rate) => rate.id === example.id),
   );
-  if (missingExamples.length)
-    rates.value = [...missingExamples, ...rates.value];
+  if (missingExamples.length || populatedRates.length !== rates.value.length)
+    rates.value = [...missingExamples, ...populatedRates];
 }
 const day = shallowRef(today());
 useTimer(
@@ -225,14 +227,15 @@ function saveVersion() {
   notify(existing ? "Версия обновлена" : "Новая версия тарифа создана");
 }
 function requestDelete(version: Version) {
-  const reason = lockReason(version, today());
+  if (!selected.value) return;
+  const reason = versionDeletionReason(selected.value, version, today());
   if (reason) return notify(reason);
   deletingId.value = version.id;
   deleteOpen.value = true;
 }
 function removeVersion() {
   if (!selected.value || !deleting.value) return;
-  const reason = lockReason(deleting.value, today());
+  const reason = versionDeletionReason(selected.value, deleting.value, today());
   if (reason) {
     deleteOpen.value = false;
     return notify(reason);
@@ -708,8 +711,13 @@ function stateLabel(rate: Rate) {
                         ><Button.Root
                           class="icon-button remove-version"
                           :aria-label="`Удалить версию от ${formatDate(version.date)}`"
-                          :disabled="!!lockReason(version, day)"
-                          :title="lockReason(version, day) || 'Удалить версию'"
+                          :disabled="
+                            !!versionDeletionReason(selected!, version, day)
+                          "
+                          :title="
+                            versionDeletionReason(selected!, version, day) ||
+                            'Удалить версию'
+                          "
                           @click="requestDelete(version)"
                           ><Icon name="trash-row"
                         /></Button.Root>
@@ -729,8 +737,11 @@ function stateLabel(rate: Rate) {
                       <span>{{ service.name }}</span
                       ><span>{{ money(service.priceCents) }} / сутки</span>
                     </div>
-                    <p v-if="lockReason(version, day)" class="lock-reason">
-                      {{ lockReason(version, day) }}
+                    <p
+                      v-if="versionDeletionReason(selected!, version, day)"
+                      class="lock-reason"
+                    >
+                      {{ versionDeletionReason(selected!, version, day) }}
                     </p>
                   </article>
                 </div>
@@ -758,10 +769,13 @@ function stateLabel(rate: Rate) {
           ><template v-else
             ><Button.Root
               class="button danger-soft"
-              :disabled="!shownVersion || !!lockReason(shownVersion, day)"
+              :disabled="
+                !shownVersion ||
+                !!versionDeletionReason(selected!, shownVersion, day)
+              "
               :title="
                 shownVersion
-                  ? lockReason(shownVersion, day)
+                  ? versionDeletionReason(selected!, shownVersion, day)
                   : 'Нет версии для удаления'
               "
               @click="shownVersion && requestDelete(shownVersion)"

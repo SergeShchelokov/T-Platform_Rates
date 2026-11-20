@@ -13,6 +13,7 @@ import {
   dailyAmount,
   isRate,
   lockReason,
+  versionDeletionReason,
   newVersionDraft,
   savedVersion,
 } from "../src/domain.mjs";
@@ -53,6 +54,9 @@ test("price input accepts numeric money and rejects letters, signs and extra dec
 });
 
 test("dates reject invalid, past and occupied dates but allow editing the same version", () => {
+  const emptyDraft = newVersionDraft();
+  assert.ok(versionErrors(emptyDraft, [], "2026-11-20").date);
+  assert.ok(versionErrors(emptyDraft, [], "2026-11-20").price);
   assert.equal(validDate("2026-02-30"), false);
   const versions = [{ id: "one", date: "2026-12-01" }];
   const draft = { id: "", date: "2026-12-01", price: "300", services: [] };
@@ -74,6 +78,39 @@ test("dates reject invalid, past and occupied dates but allow editing the same v
       [],
       "2026-11-20",
     )["name-s"],
+  );
+});
+
+test("deletion cannot leave a tariff without versions, while eligible versions remain removable", () => {
+  const current = { id: "current", date: "2026-11-20", calculated: false };
+  const future = { id: "future", date: "2026-12-01", calculated: false };
+  for (const version of [current, future]) {
+    assert.match(
+      versionDeletionReason({ versions: [version] }, version, "2026-11-20"),
+      /единственную версию/,
+    );
+  }
+  const rate = { versions: [current, future] };
+  assert.equal(versionDeletionReason(rate, current, "2026-11-20"), "");
+  assert.equal(versionDeletionReason(rate, future, "2026-11-20"), "");
+  assert.match(
+    versionDeletionReason(rate, { ...current, calculated: true }, "2026-11-20"),
+    /выполнен расчёт/,
+  );
+  assert.match(
+    versionDeletionReason(
+      rate,
+      { ...current, date: "2026-11-19" },
+      "2026-11-20",
+    ),
+    /прошла/,
+  );
+  const remaining = {
+    versions: rate.versions.filter((version) => version.id !== current.id),
+  };
+  assert.match(
+    versionDeletionReason(remaining, future, "2026-11-20"),
+    /единственную версию/,
   );
 });
 
