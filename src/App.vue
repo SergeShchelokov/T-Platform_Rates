@@ -19,24 +19,20 @@ import {
   orderedVersions,
   lockReason,
   versionDeletionReason,
+  deleteRateVersion,
   versionErrors,
   newVersionDraft,
   savedVersion,
   isRate,
 } from "./domain.mjs";
 
-const rates = useStorage().get<Rate[]>("rates-v1", []);
+const rates = useStorage().get<Rate[]>("rates-v1", demoRates());
 const storageError = shallowRef("");
 if (!Array.isArray(rates.value) || !rates.value.every(isRate)) {
   storageError.value =
     "Не удалось прочитать сохранённые тарифы. Сохранённые данные доступны в хранилище браузера.";
 } else {
-  const populatedRates = rates.value.filter((rate) => rate.versions.length > 0);
-  const missingExamples = demoRates().filter(
-    (example) => !populatedRates.some((rate) => rate.id === example.id),
-  );
-  if (missingExamples.length || populatedRates.length !== rates.value.length)
-    rates.value = [...missingExamples, ...populatedRates];
+  rates.value = rates.value.filter((rate) => rate.versions.length > 0);
 }
 const day = shallowRef(today());
 useTimer(
@@ -59,6 +55,7 @@ const comment = shallowRef("");
 const draft = ref<VersionDraft>(newVersionDraft());
 const errors = ref<Record<string, string>>({});
 const attempted = shallowRef(false);
+const initialForm = shallowRef("");
 const deletingId = shallowRef("");
 const notification = shallowRef("");
 const notificationTimer = useTimer(
@@ -113,6 +110,7 @@ const editorFilled = computed(
         )
       : !!draft.value.price.trim()),
 );
+const formDirty = computed(() => formSnapshot() !== initialForm.value);
 const navItems = [
   ["organizations", "Организации"],
   ["shield", "Пользователи"],
@@ -130,6 +128,13 @@ function notify(message: string) {
   notification.value = message;
   notificationTimer.start();
 }
+function formSnapshot() {
+  return JSON.stringify({
+    name: name.value,
+    comment: comment.value,
+    draft: draft.value,
+  });
+}
 function openCreate() {
   creating.value = true;
   selectedId.value = "";
@@ -139,6 +144,7 @@ function openCreate() {
   draft.value = newVersionDraft();
   errors.value = {};
   attempted.value = false;
+  initialForm.value = formSnapshot();
   mainOpen.value = true;
 }
 function openRate(rate: Rate) {
@@ -163,6 +169,7 @@ function beginVersion(version?: Version) {
   }
   errors.value = {};
   attempted.value = false;
+  initialForm.value = formSnapshot();
   nestedOpen.value = true;
 }
 function validate() {
@@ -240,11 +247,20 @@ function removeVersion() {
     deleteOpen.value = false;
     return notify(reason);
   }
-  selected.value.versions = selected.value.versions.filter(
-    (version) => version.id !== deletingId.value,
+  const rateName = selected.value.name;
+  const lastVersion = selected.value.versions.length === 1;
+  rates.value = deleteRateVersion(
+    rates.value,
+    selected.value.id,
+    deletingId.value,
   );
   deleteOpen.value = false;
-  notify("Версия тарифа удалена");
+  if (lastVersion) {
+    mainOpen.value = false;
+    nestedOpen.value = false;
+    selectedId.value = "";
+  }
+  notify(lastVersion ? `Тариф «${rateName}» удалён` : "Версия тарифа удалена");
 }
 function versionLabel(version: Version) {
   if (version.date > day.value)
@@ -377,10 +393,7 @@ function stateLabel(rate: Rate) {
                 <tr>
                   <th>Название</th>
                   <th>Действует с</th>
-                  <th class="numeric">За объект, ₽ / сутки</th>
-                  <th class="numeric">Организации</th>
-                  <th class="numeric">Объекты</th>
-                  <th class="numeric">Всего, ₽ / сутки</th>
+                  <th class="numeric">Цена, ₽ / сутки</th>
                   <th>Статус</th>
                 </tr>
               </thead>
@@ -408,11 +421,6 @@ function stateLabel(rate: Rate) {
                         ? money(listVersion(rate)!.priceCents, false)
                         : "—"
                     }}
-                  </td>
-                  <td class="numeric">{{ rate.organizations?.length ?? 0 }}</td>
-                  <td class="numeric">{{ objectCount(rate) }}</td>
-                  <td class="numeric">
-                    {{ money(dailyAmount(rate, day), false) }}
                   </td>
                   <td>
                     <span
@@ -500,7 +508,9 @@ function stateLabel(rate: Rate) {
       <Dialog.Content
         class="drawer"
         :class="{ 'drawer-under': nestedOpen }"
-        :close-on-click-outside="false"
+        :close-on-click-outside="
+          !nestedOpen && !deleteOpen && (!creating || !formDirty)
+        "
       >
         <header class="drawer-header">
           <div>
@@ -596,63 +606,6 @@ function stateLabel(rate: Rate) {
                     Нет действующей версии. Создайте новую версию, чтобы задать
                     стоимость и дату начала действия.
                   </p>
-                  <section
-                    v-if="selected.organizations?.length"
-                    class="organization-summary"
-                  >
-                    <h3>Подключённые организации</h3>
-                    <p class="muted">
-                      Демонстрационные назначения ·
-                      {{ objectCount(selected) }} объектов
-                    </p>
-                    <table
-                      class="composition-table"
-                      aria-label="Подключённые организации"
-                    >
-                      <thead>
-                        <tr>
-                          <th>Организация</th>
-                          <th class="numeric">Объекты</th>
-                          <th class="numeric">В сутки</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        <tr
-                          v-for="organization in selected.organizations"
-                          :key="organization.id"
-                        >
-                          <td>{{ organization.name }}</td>
-                          <td class="numeric">{{ organization.objects }}</td>
-                          <td class="numeric">
-                            {{
-                              money(
-                                (active?.priceCents ?? 0) *
-                                  organization.objects,
-                              )
-                            }}
-                          </td>
-                        </tr>
-                      </tbody>
-                      <tfoot>
-                        <tr>
-                          <th>Итого в сутки</th>
-                          <td class="numeric">{{ objectCount(selected) }}</td>
-                          <td class="numeric">
-                            {{ money(dailyAmount(selected, day)) }}
-                          </td>
-                        </tr>
-                      </tfoot>
-                    </table>
-                    <p class="muted">
-                      {{
-                        active
-                          ? `${money(active.priceCents)} за объект × ${objectCount(selected)} объектов`
-                          : pending
-                            ? `Начисления начнутся с ${formatDate(pending.date)}`
-                            : "Начислений нет, пока у тарифа нет действующей версии"
-                      }}
-                    </p>
-                  </section>
                 </template>
               </Tabs.Panel>
               <Tabs.Panel value="history">
@@ -768,24 +721,10 @@ function stateLabel(rate: Rate) {
             ></template
           ><template v-else
             ><Button.Root
+              v-if="shownVersion"
               class="button danger-soft"
-              :disabled="
-                !shownVersion ||
-                !!versionDeletionReason(selected!, shownVersion, day)
-              "
-              :title="
-                shownVersion
-                  ? versionDeletionReason(selected!, shownVersion, day)
-                  : 'Нет версии для удаления'
-              "
-              @click="shownVersion && requestDelete(shownVersion)"
-              ><Icon name="trash-red" />{{
-                active
-                  ? "Удалить действующую версию"
-                  : pending
-                    ? "Удалить запланированную версию"
-                    : "Удалить версию"
-              }}</Button.Root
+              @click="requestDelete(shownVersion)"
+              ><Icon name="trash-red" />Удалить версию тарифа</Button.Root
             ><span class="spacer" /><Button.Root
               class="button outlined"
               @click="mainOpen = false"
@@ -796,7 +735,7 @@ function stateLabel(rate: Rate) {
         <Dialog.Root v-model="nestedOpen"
           ><Dialog.Content
             class="drawer version-drawer"
-            :close-on-click-outside="false"
+            :close-on-click-outside="!formDirty"
             ><header class="drawer-header">
               <div>
                 <small>{{ selected?.name }}</small
@@ -847,10 +786,12 @@ function stateLabel(rate: Rate) {
           ><Dialog.Content class="confirmation" :close-on-click-outside="false"
             ><Dialog.Title>Удалить версию тарифа?</Dialog.Title
             ><Dialog.Description
-              >Будет удалена версия, которая действует с
-              {{ formatDate(deleting?.date ?? "") }}. По ней ещё не выполнен
-              расчёт.</Dialog.Description
-            >
+              >Будет удалена версия от {{ formatDate(deleting?.date ?? "") }}.
+              <template v-if="selected?.versions.length === 1"
+                >Это последняя версия. Тариф «{{ selected.name }}» будет удалён
+                целиком.</template
+              >
+            </Dialog.Description>
             <div class="confirmation-actions">
               <Button.Root class="button outlined" @click="deleteOpen = false"
                 >Отмена</Button.Root
@@ -865,14 +806,16 @@ function stateLabel(rate: Rate) {
     <Teleport
       :to="nestedOpen ? '.version-drawer' : mainOpen ? '.drawer' : 'body'"
       ><div v-if="notification" class="toast" role="status" aria-live="polite">
-        <span class="toast-mark" aria-hidden="true">✓</span
-        ><span>{{ notification }}</span
+        <Icon name="toast-check" class="toast-check" /><span
+          class="toast-message"
+          >{{ notification }}</span
         ><Button.Root
-          class="icon-button"
+          class="toast-close"
           aria-label="Закрыть уведомление"
           @click="notification = ''"
-          ><Icon name="close"
-        /></Button.Root></div
-    ></Teleport>
+          >Закрыть</Button.Root
+        >
+      </div></Teleport
+    >
   </div>
 </template>

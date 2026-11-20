@@ -489,9 +489,10 @@ td {
   white-space: nowrap;
 }
 .rates-table {
-  min-width: 1000px;
+  min-width: 560px;
 }
 .rates-table th:first-child {
+  width: 320px;
   min-width: 200px;
 }
 .rates-table th:nth-child(2) {
@@ -1023,19 +1024,6 @@ dialog::backdrop {
 .composition-table tr:last-child td {
   border-bottom: 0;
 }
-.organization-summary {
-  margin-top: 24px;
-}
-.organization-summary p {
-  margin: 8px 0 12px;
-  font-size: 12px;
-  line-height: 18px;
-}
-.organization-summary tfoot td,
-.organization-summary tfoot th {
-  border-top: 1px solid var(--border);
-  font-weight: 600;
-}
 .version-note {
   margin-top: 12px;
   line-height: 22px;
@@ -1241,24 +1229,59 @@ dialog::backdrop {
 }
 .toast {
   position: fixed;
-  bottom: 24px;
+  bottom: 56px;
   right: 24px;
   z-index: 10000;
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 12px 16px;
-  border: 1px solid #abefc6;
-  border-left: 4px solid #12b76a;
+  gap: 16px;
+  width: 578.795px;
+  min-height: 72px;
+  padding: 11px 15px;
+  border: 1px solid #79b279;
   border-radius: 6px;
-  background: #ecfdf3;
-  color: #027a48;
-  box-shadow: 0 6px 18px #10182812;
-  max-width: min(480px, calc(100vw - 32px));
+  background: #f1fbef;
+  color: #79b279;
+  box-shadow: 5px 13px 20px rgba(15, 59, 23, 0.16);
+  max-width: calc(100vw - 48px);
+  overflow: hidden;
 }
-.toast-mark {
-  color: #039855;
-  font-size: 20px;
+.toast::before {
+  content: "";
+  position: absolute;
+  left: -1px;
+  top: -1px;
+  bottom: -1px;
+  width: 8px;
+  background: #79b279;
+  pointer-events: none;
+}
+.toast-check {
+  width: 48px;
+  height: 48px;
+  flex-basis: 48px;
+}
+.toast-message {
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+  line-height: 16px;
+}
+.toast-close {
+  flex-shrink: 0;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 24px;
+  letter-spacing: 0.2px;
+  text-transform: uppercase;
+  opacity: 0.8;
+}
+.toast-close:hover {
+  opacity: 1;
 }
 @media (prefers-reduced-motion: reduce) {
   .rate-card {

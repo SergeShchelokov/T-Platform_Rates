@@ -68,12 +68,18 @@ export function lockReason(version, day = today()) {
 }
 
 export function versionDeletionReason(rate, version, day = today()) {
-  return (
-    lockReason(version, day) ||
-    (rate.versions.length <= 1
-      ? "Нельзя удалить единственную версию тарифа. Сначала создайте новую"
-      : "")
-  );
+  const shown = currentVersion(rate, day) ?? upcomingVersion(rate, day);
+  return version.id === shown?.id ? "" : lockReason(version, day);
+}
+
+export function deleteRateVersion(rates, rateId, versionId) {
+  return rates.flatMap((rate) => {
+    if (rate.id !== rateId) return [rate];
+    const versions = rate.versions.filter(
+      (version) => version.id !== versionId,
+    );
+    return versions.length ? [{ ...rate, versions }] : [];
+  });
 }
 
 export function versionErrors(draft, versions = [], day = today()) {

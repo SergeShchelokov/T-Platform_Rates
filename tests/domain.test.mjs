@@ -14,6 +14,7 @@ import {
   isRate,
   lockReason,
   versionDeletionReason,
+  deleteRateVersion,
   newVersionDraft,
   savedVersion,
 } from "../src/domain.mjs";
@@ -81,37 +82,45 @@ test("dates reject invalid, past and occupied dates but allow editing the same v
   );
 });
 
-test("deletion cannot leave a tariff without versions, while eligible versions remain removable", () => {
-  const current = { id: "current", date: "2026-11-20", calculated: false };
+test("the version shown in parameters is always deletable, including a sole or calculated active version", () => {
+  const archived = { id: "archived", date: "2026-11-01", calculated: true };
+  const active = { id: "active", date: "2026-11-10", calculated: true };
   const future = { id: "future", date: "2026-12-01", calculated: false };
-  for (const version of [current, future]) {
-    assert.match(
-      versionDeletionReason({ versions: [version] }, version, "2026-11-20"),
-      /единственную версию/,
-    );
-  }
-  const rate = { versions: [current, future] };
-  assert.equal(versionDeletionReason(rate, current, "2026-11-20"), "");
+  const rate = { versions: [archived, active, future] };
+  assert.equal(versionDeletionReason(rate, active, "2026-11-20"), "");
+  assert.equal(
+    versionDeletionReason({ versions: [active] }, active, "2026-11-20"),
+    "",
+  );
+  assert.equal(
+    versionDeletionReason({ versions: [future] }, future, "2026-11-20"),
+    "",
+  );
   assert.equal(versionDeletionReason(rate, future, "2026-11-20"), "");
-  assert.match(
-    versionDeletionReason(rate, { ...current, calculated: true }, "2026-11-20"),
-    /выполнен расчёт/,
+  assert.match(versionDeletionReason(rate, archived, "2026-11-20"), /прошла/);
+  assert.ok(lockReason(active, "2026-11-20"));
+});
+
+test("deleting a version updates the price or removes the whole tariff after its last version", () => {
+  const original = demoRates("2026-11-20");
+  const rate = original[0];
+  let result = deleteRateVersion(original, rate.id, "flight-3");
+  assert.equal(result.length, 3);
+  assert.equal(currentVersion(result[0], "2026-11-20").priceCents, 2500);
+  assert.equal(dailyAmount(result[0], "2026-11-20"), 62500);
+  assert.equal(original[0].versions.length, 3);
+  assert.equal(result[1], original[1]);
+  assert.equal(result[2], original[2]);
+  result = deleteRateVersion(result, rate.id, "flight-2");
+  assert.equal(result[0].versions.length, 1);
+  result = deleteRateVersion(result, rate.id, "flight-1");
+  assert.deepEqual(
+    result.map((row) => row.id),
+    ["demo-autograph", "demo-agro"],
   );
-  assert.match(
-    versionDeletionReason(
-      rate,
-      { ...current, date: "2026-11-19" },
-      "2026-11-20",
-    ),
-    /прошла/,
-  );
-  const remaining = {
-    versions: rate.versions.filter((version) => version.id !== current.id),
-  };
-  assert.match(
-    versionDeletionReason(remaining, future, "2026-11-20"),
-    /единственную версию/,
-  );
+  assert.deepEqual(deleteRateVersion(result, "missing", "flight-1"), result);
+  const sole = { ...rate, versions: [rate.versions[0]] };
+  assert.deepEqual(deleteRateVersion([sole], sole.id, sole.versions[0].id), []);
 });
 
 test("effective conditions update after deletion and future versions are never active early", () => {
