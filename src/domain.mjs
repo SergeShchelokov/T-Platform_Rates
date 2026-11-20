@@ -19,6 +19,11 @@ export function moneyToCents(value) {
   return Number(whole) * 100 + Number(fraction.padEnd(2, "0"));
 }
 
+export function maskPrice(value) {
+  const normalized = String(value).replace(/[\s₽]/g, "").replace(".", ",");
+  return /^\d{0,8}(,\d{0,2})?$/.test(normalized) ? normalized : null;
+}
+
 export function money(cents, fractions = true) {
   return `${new Intl.NumberFormat("ru-RU", {
     minimumFractionDigits: fractions ? 2 : 0,
@@ -43,6 +48,17 @@ export function upcomingVersion(rate, day = today()) {
   return [...rate.versions]
     .filter((version) => version.date > day)
     .sort((a, b) => a.date.localeCompare(b.date))[0];
+}
+
+export function objectCount(rate) {
+  return (rate.organizations ?? []).reduce(
+    (sum, organization) => sum + organization.objects,
+    0,
+  );
+}
+
+export function dailyAmount(rate, day = today()) {
+  return (currentVersion(rate, day)?.priceCents ?? 0) * objectCount(rate);
 }
 
 export function lockReason(version, day = today()) {
@@ -119,6 +135,15 @@ export function isRate(value) {
     typeof value.id === "string" &&
     typeof value.name === "string" &&
     typeof value.comment === "string" &&
+    (value.organizations === undefined ||
+      (Array.isArray(value.organizations) &&
+        value.organizations.every(
+          (organization) =>
+            typeof organization.id === "string" &&
+            typeof organization.name === "string" &&
+            Number.isSafeInteger(organization.objects) &&
+            organization.objects >= 0,
+        ))) &&
     Array.isArray(value.versions) &&
     value.versions.every(
       (version) =>

@@ -488,8 +488,11 @@ td {
   text-align: right;
   white-space: nowrap;
 }
+.rates-table {
+  min-width: 1000px;
+}
 .rates-table th:first-child {
-  width: 320px;
+  min-width: 200px;
 }
 .rates-table th:nth-child(2) {
   width: 126px;
@@ -535,7 +538,7 @@ td {
 .rate-card > .active {
   border: 1px solid #12b76a;
   color: #039855;
-  background: #fff;
+  background: #e2f5ed;
 }
 .rates-grid {
   display: grid;
@@ -545,7 +548,7 @@ td {
 }
 .rate-card {
   min-height: 420px;
-  border: 1px solid #f2f4f7;
+  border: 1px solid #e4e7ec;
   border-radius: 6px;
   box-shadow: 0 2px 8px #2f2b3d1f;
   background: #fff;
@@ -555,9 +558,16 @@ td {
   flex-direction: column;
   align-items: flex-start;
   gap: 8px;
+  transition:
+    box-shadow 160ms ease,
+    transform 160ms ease,
+    border-color 160ms ease;
 }
-.rate-card:hover {
-  border-color: #98a2b3;
+.rate-card:hover,
+.rate-card:focus-visible {
+  border-color: #d0d5dd;
+  box-shadow: 0 10px 24px #10182826;
+  transform: translateY(-3px);
 }
 .rate-card > .badge {
   padding: 2px 5px;
@@ -648,7 +658,7 @@ dialog::backdrop {
   background: #10182840;
 }
 .drawer-under {
-  margin-right: 80px;
+  margin-right: 24px;
 }
 .drawer-header {
   flex: 0 0 auto;
@@ -682,8 +692,8 @@ dialog::backdrop {
   flex-shrink: 0;
   margin-right: -6px;
 }
-.drawer-header .icon-button:has(img[src*="close"]) {
-  opacity: 0.55;
+.close-button {
+  transition: background-color 140ms ease;
 }
 .drawer-tabs {
   display: flex;
@@ -847,6 +857,10 @@ dialog::backdrop {
 .period-field select {
   appearance: none;
   padding-right: 30px !important;
+  color: #98a2b3;
+  -webkit-text-fill-color: #98a2b3;
+  opacity: 1;
+  cursor: default;
 }
 .period-field .icon {
   position: absolute;
@@ -945,17 +959,6 @@ dialog::backdrop {
 .view-name > .button {
   margin-left: auto;
 }
-.view-name > .icon-button {
-  width: 28px;
-  height: 28px;
-  padding: 3px;
-  margin-top: -6px;
-}
-.view-name > .icon-button .icon {
-  width: 18px;
-  height: 18px;
-  flex-basis: 18px;
-}
 .comment-view {
   margin-bottom: 24px;
 }
@@ -1019,6 +1022,23 @@ dialog::backdrop {
 }
 .composition-table tr:last-child td {
   border-bottom: 0;
+}
+.organization-summary {
+  margin-top: 24px;
+}
+.organization-summary p {
+  margin: 8px 0 12px;
+  font-size: 12px;
+  line-height: 18px;
+}
+.organization-summary tfoot td,
+.organization-summary tfoot th {
+  border-top: 1px solid var(--border);
+  font-weight: 600;
+}
+.version-note {
+  margin-top: 12px;
+  line-height: 22px;
 }
 .history-list {
   display: flex;
@@ -1104,30 +1124,8 @@ dialog::backdrop {
   padding: 140px 0 24px;
   gap: 12px;
 }
-.no-current {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  text-align: center;
-  padding: 36px 20px;
-  gap: 12px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-}
-.no-current h2 {
-  font-size: 16px;
-}
-.no-current p {
-  line-height: 22px;
-  max-width: 380px;
-  color: #667085;
-}
-.metadata-note {
-  margin-top: 16px;
-  line-height: 22px;
-}
 .standalone-form {
-  padding-top: 0;
+  padding-top: 12px;
 }
 .calendar-popover {
   width: 328px;
@@ -1256,10 +1254,20 @@ dialog::backdrop {
   background: #ecfdf3;
   color: #027a48;
   box-shadow: 0 6px 18px #10182812;
+  max-width: min(480px, calc(100vw - 32px));
 }
 .toast-mark {
   color: #039855;
   font-size: 20px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .rate-card {
+    transition: none;
+  }
+  .rate-card:hover,
+  .rate-card:focus-visible {
+    transform: none;
+  }
 }
 .storage-error {
   padding: 24px;
@@ -1363,9 +1371,6 @@ dialog::backdrop {
   .drawer-body {
     padding-left: 16px;
     padding-right: 16px;
-  }
-  .drawer-under {
-    margin-right: 0;
   }
   .drawer-footer {
     padding-left: 16px;

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { nextTick } from "vue";
 import { Button, Popover } from "@vuetify/v0/components";
-import { draftTotal, money, moneyToCents } from "../domain.mjs";
+import { draftTotal, money, moneyToCents, maskPrice } from "../domain.mjs";
 import type { VersionDraft } from "../types";
 import DateField from "./DateField.vue";
 import Icon from "./Icon.vue";
@@ -26,6 +26,18 @@ function normalizePrice(service?: { price: string }) {
     if (cents !== null)
       draft.value.price = (cents / 100).toFixed(2).replace(".", ",");
   }
+}
+
+function inputPrice(event: Event, service?: { price: string }) {
+  const input = event.target as HTMLInputElement;
+  const price = maskPrice(input.value);
+  if (price === null) {
+    input.value = service ? service.price : draft.value.price;
+    return;
+  }
+  input.value = price;
+  if (service) service.price = price;
+  else draft.value.price = price;
 }
 </script>
 
@@ -62,7 +74,7 @@ function normalizePrice(service?: { price: string }) {
             inputmode="decimal"
             :aria-invalid="!!errors.price"
             :aria-describedby="errors.price ? 'price-error' : undefined"
-            @input="draft.price = ($event.target as HTMLInputElement).value"
+            @input="inputPrice"
             @blur="normalizePrice()"
           />
         </div>
@@ -77,7 +89,7 @@ function normalizePrice(service?: { price: string }) {
       </div>
       <label class="field floating compact period-field"
         ><span>Период *</span
-        ><select aria-label="Период">
+        ><select aria-label="Период" disabled>
           <option>Сутки</option></select
         ><Icon name="chevron"
       /></label>
@@ -126,12 +138,13 @@ function normalizePrice(service?: { price: string }) {
           </div>
           <div>
             <input
-              v-model="service.price"
+              :value="service.price"
               :aria-label="`Цена услуги ${draft.services.indexOf(service) + 1}`"
               placeholder="0,00"
               class="service-price"
               :class="{ invalid: errors[`price-${service.id}`] }"
               inputmode="decimal"
+              @input="inputPrice($event, service)"
               @blur="normalizePrice(service)"
             />
             <p

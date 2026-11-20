@@ -15,6 +15,7 @@ export interface Rate {
   name: string;
   comment: string;
   versions: Version[];
+  organizations?: { id: string; name: string; objects: number }[];
 }
 export interface VersionDraft {
   id: string;

@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { computed, ref, shallowRef, watch, nextTick } from "vue";
+import { computed, ref, shallowRef, watch } from "vue";
 import { useStorage, useTimer } from "@vuetify/v0";
 import { Button, Dialog, Tabs } from "@vuetify/v0/components";
 import Icon from "./components/Icon.vue";
 import VersionFields from "./components/VersionFields.vue";
+import RateDetails from "./components/RateDetails.vue";
+import { demoRates } from "./demo.mjs";
 import brand from "./assets/brand.png";
 import type { Rate, Version, VersionDraft } from "./types";
 import {
@@ -12,6 +14,8 @@ import {
   formatDate,
   currentVersion,
   upcomingVersion,
+  objectCount,
+  dailyAmount,
   orderedVersions,
   lockReason,
   versionErrors,
@@ -25,6 +29,12 @@ const storageError = shallowRef("");
 if (!Array.isArray(rates.value) || !rates.value.every(isRate)) {
   storageError.value =
     "Не удалось прочитать сохранённые тарифы. Сохранённые данные доступны в хранилище браузера.";
+} else {
+  const missingExamples = demoRates().filter(
+    (example) => !rates.value.some((rate) => rate.id === example.id),
+  );
+  if (missingExamples.length)
+    rates.value = [...missingExamples, ...rates.value];
 }
 const day = shallowRef(today());
 useTimer(
@@ -42,7 +52,6 @@ const deleteOpen = shallowRef(false);
 const tab = shallowRef("parameters");
 const selectedId = shallowRef("");
 const creating = shallowRef(false);
-const editing = shallowRef(false);
 const name = shallowRef("");
 const comment = shallowRef("");
 const draft = ref<VersionDraft>(newVersionDraft());
@@ -72,6 +81,7 @@ const pending = computed(() =>
     ? (upcomingVersion(selected.value, day.value) as Version | undefined)
     : undefined,
 );
+const shownVersion = computed(() => active.value ?? pending.value);
 const deleting = computed(() =>
   selected.value?.versions.find((version) => version.id === deletingId.value),
 );
@@ -91,11 +101,6 @@ const selectedTitle = computed(() =>
   creating.value
     ? name.value.trim() || "Новый тариф"
     : (selected.value?.name ?? ""),
-);
-const metadataDirty = computed(
-  () =>
-    name.value !== selected.value?.name ||
-    comment.value !== selected.value?.comment,
 );
 const editorFilled = computed(
   () =>
@@ -125,7 +130,6 @@ function notify(message: string) {
 }
 function openCreate() {
   creating.value = true;
-  editing.value = false;
   selectedId.value = "";
   name.value = "";
   comment.value = "";
@@ -138,7 +142,6 @@ function openCreate() {
 function openRate(rate: Rate) {
   selectedId.value = rate.id;
   creating.value = false;
-  editing.value = false;
   name.value = rate.name;
   comment.value = rate.comment;
   tab.value = "parameters";
@@ -146,17 +149,11 @@ function openRate(rate: Rate) {
   attempted.value = false;
   mainOpen.value = true;
 }
-async function editMetadata() {
-  name.value = selected.value!.name;
-  comment.value = selected.value!.comment;
-  editing.value = true;
-  errors.value = {};
-  await nextTick();
-  document.getElementById("rate-name")?.focus();
-}
 function beginVersion(version?: Version) {
   if (version && lockReason(version, today()))
     return notify(lockReason(version, today()));
+  name.value = selected.value!.name;
+  comment.value = selected.value!.comment;
   draft.value = newVersionDraft(version ?? active.value);
   if (version) {
     draft.value.id = version.id;
@@ -172,8 +169,7 @@ function validate() {
     selected.value?.versions ?? [],
     today(),
   ) as Record<string, string>;
-  if (creating.value && !name.value.trim())
-    result.name = "Введите название тарифа";
+  if (!name.value.trim()) result.name = "Введите название тарифа";
   return result;
 }
 watch(
@@ -185,11 +181,7 @@ watch(
 );
 function saveRate() {
   attempted.value = true;
-  errors.value = creating.value
-    ? validate()
-    : !name.value.trim()
-      ? { name: "Введите название тарифа" }
-      : {};
+  errors.value = validate();
   if (Object.keys(errors.value).length) {
     tab.value = "parameters";
     return;
@@ -200,18 +192,16 @@ function saveRate() {
       name: name.value.trim(),
       comment: comment.value.trim(),
       versions: [savedVersion(draft.value)],
+      organizations: [],
     };
     rates.value = [...rates.value, rate];
     selectedId.value = rate.id;
     creating.value = false;
+    day.value = today();
+    mainOpen.value = false;
     search.value = "";
-    notify("Тариф создан");
-  } else if (selected.value) {
-    selected.value.name = name.value.trim();
-    selected.value.comment = comment.value.trim();
-    notify("Изменения сохранены");
+    notify(`Тариф «${rate.name}» создан`);
   }
-  editing.value = false;
 }
 function saveVersion() {
   attempted.value = true;
@@ -223,11 +213,14 @@ function saveVersion() {
     return notify(lockReason(existing, today()));
   if (Object.keys(errors.value).length || !selected.value) return;
   const version = savedVersion(draft.value);
+  selected.value.name = name.value.trim();
+  selected.value.comment = comment.value.trim();
   selected.value.versions = [
     ...selected.value.versions.filter((row) => row.id !== version.id),
     version,
   ];
   nestedOpen.value = false;
+  day.value = today();
   tab.value = "history";
   notify(existing ? "Версия обновлена" : "Новая версия тарифа создана");
 }
@@ -381,7 +374,10 @@ function stateLabel(rate: Rate) {
                 <tr>
                   <th>Название</th>
                   <th>Действует с</th>
-                  <th class="numeric">Цена, ₽ / сутки</th>
+                  <th class="numeric">За объект, ₽ / сутки</th>
+                  <th class="numeric">Организации</th>
+                  <th class="numeric">Объекты</th>
+                  <th class="numeric">Всего, ₽ / сутки</th>
                   <th>Статус</th>
                 </tr>
               </thead>
@@ -409,6 +405,11 @@ function stateLabel(rate: Rate) {
                         ? money(listVersion(rate)!.priceCents, false)
                         : "—"
                     }}
+                  </td>
+                  <td class="numeric">{{ rate.organizations?.length ?? 0 }}</td>
+                  <td class="numeric">{{ objectCount(rate) }}</td>
+                  <td class="numeric">
+                    {{ money(dailyAmount(rate, day), false) }}
                   </td>
                   <td>
                     <span
@@ -465,11 +466,17 @@ function stateLabel(rate: Rate) {
                 </ul></template
               >
               <div class="card-bottom">
-                <strong>{{ money(0, false) }}</strong
+                <strong>{{ money(dailyAmount(rate, day), false) }}</strong
                 ><small>Всего в сутки с тарифа</small>
                 <div class="card-stats">
-                  <div><b>0</b><small>Организаций</small></div>
-                  <div><b>0</b><small>Объектов</small></div>
+                  <div>
+                    <b>{{ rate.organizations?.length ?? 0 }}</b
+                    ><small>Организаций</small>
+                  </div>
+                  <div>
+                    <b>{{ objectCount(rate) }}</b
+                    ><small>Объектов</small>
+                  </div>
                   <div>
                     <b>{{
                       listVersion(rate)
@@ -513,54 +520,18 @@ function stateLabel(rate: Rate) {
             <div class="drawer-body">
               <Tabs.Panel value="parameters">
                 <form
-                  v-if="creating || editing"
+                  v-if="creating"
                   id="rate-form"
                   class="rate-form"
                   novalidate
                   @submit.prevent="saveRate"
                 >
-                  <div
-                    class="field name-field"
-                    :class="{ invalid: errors.name }"
-                  >
-                    <label v-if="name" for="rate-name" class="floating-label"
-                      >Название тарифа *</label
-                    ><input
-                      id="rate-name"
-                      v-model="name"
-                      placeholder="Название тарифа *"
-                      maxlength="150"
-                      autocomplete="off"
-                      :aria-invalid="!!errors.name"
-                      :aria-describedby="errors.name ? 'name-error' : undefined"
-                      aria-label="Название тарифа"
-                    />
-                  </div>
-                  <p
-                    v-if="errors.name"
-                    id="name-error"
-                    class="field-error"
-                    role="alert"
-                  >
-                    {{ errors.name }}
-                  </p>
-                  <label class="field floating comment-field"
-                    ><span>Комментарий</span
-                    ><textarea
-                      v-model="comment"
-                      placeholder="Напишите о тарифе"
-                      maxlength="2000"
-                      aria-label="Комментарий"
-                    />
-                  </label>
-                  <VersionFields
-                    v-if="creating"
-                    v-model="draft"
+                  <RateDetails
+                    v-model:name="name"
+                    v-model:comment="comment"
                     :errors="errors"
                   />
-                  <p v-else class="muted metadata-note">
-                    Изменение названия и комментария относится ко всему тарифу.
-                  </p>
+                  <VersionFields v-model="draft" :errors="errors" />
                 </form>
                 <template v-else-if="selected">
                   <div class="view-name">
@@ -568,74 +539,117 @@ function stateLabel(rate: Rate) {
                       <h3>Название тарифа</h3>
                       <p>{{ selected.name }}</p>
                     </div>
-                    <Button.Root
-                      class="icon-button"
-                      aria-label="Редактировать название и комментарий"
-                      @click="editMetadata"
-                      ><Icon name="edit" /></Button.Root
-                    ><Button.Root class="button primary" @click="beginVersion()"
+                    <Button.Root class="button primary" @click="beginVersion()"
                       ><Icon name="plus" />Новая версия тарифа</Button.Root
                     >
                   </div>
-                  <section class="comment-view">
+                  <section v-if="selected.comment.trim()" class="comment-view">
                     <h3>Комментарий</h3>
-                    <p>{{ selected.comment || "Комментарий не указан" }}</p>
+                    <p>{{ selected.comment }}</p>
                   </section>
-                  <template v-if="active"
-                    ><h3>Параметры тарифа</h3>
-                    <div class="parameter-summary">
-                      <div>
-                        <small>Цена, всего</small
-                        ><strong>{{ money(active.priceCents) }}</strong>
-                      </div>
-                      <div><small>Период</small><strong>Сутки</strong></div>
-                      <div>
-                        <small>Действует с</small
-                        ><strong>{{ formatDate(active.date) }}</strong>
-                      </div>
+                  <h3>Параметры тарифа</h3>
+                  <div class="parameter-summary">
+                    <div>
+                      <small>Цена, всего</small
+                      ><strong>{{
+                        shownVersion ? money(shownVersion.priceCents) : "—"
+                      }}</strong>
                     </div>
-                    <template v-if="active.services.length"
-                      ><h3 class="composition-title">Состав тарифа</h3>
-                      <table class="composition-table">
-                        <thead>
-                          <tr>
-                            <th>Услуга</th>
-                            <th class="numeric">Цена</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          <tr
-                            v-for="service in active.services"
-                            :key="service.id"
-                          >
-                            <td>{{ service.name }}</td>
-                            <td class="numeric">
-                              {{ money(service.priceCents) }}
-                            </td>
-                          </tr>
-                        </tbody>
-                      </table></template
-                    ></template
-                  >
-                  <div v-else class="no-current">
-                    <Icon name="empty" />
-                    <h2>Нет действующей версии</h2>
-                    <p v-if="pending">
-                      Первая версия начнёт действовать
-                      {{ formatDate(pending.date) }}. Её условия доступны в
-                      истории версий.
-                    </p>
-                    <p v-else>
-                      Создайте новую версию, чтобы задать стоимость и дату
-                      начала действия.
-                    </p>
-                    <Button.Root
-                      v-if="pending"
-                      class="button outlined"
-                      @click="tab = 'history'"
-                      >Перейти к истории</Button.Root
-                    >
+                    <div><small>Период</small><strong>Сутки</strong></div>
+                    <div>
+                      <small>{{
+                        pending && !active
+                          ? "Начнёт действовать с"
+                          : "Действует с"
+                      }}</small
+                      ><strong>{{
+                        shownVersion ? formatDate(shownVersion.date) : "—"
+                      }}</strong>
+                    </div>
                   </div>
+                  <template v-if="shownVersion?.services.length"
+                    ><h3 class="composition-title">Состав тарифа</h3>
+                    <table class="composition-table">
+                      <thead>
+                        <tr>
+                          <th>Услуга</th>
+                          <th class="numeric">Цена</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr
+                          v-for="service in shownVersion.services"
+                          :key="service.id"
+                        >
+                          <td>{{ service.name }}</td>
+                          <td class="numeric">
+                            {{ money(service.priceCents) }}
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table></template
+                  >
+                  <p v-if="!shownVersion" class="muted version-note">
+                    Нет действующей версии. Создайте новую версию, чтобы задать
+                    стоимость и дату начала действия.
+                  </p>
+                  <section
+                    v-if="selected.organizations?.length"
+                    class="organization-summary"
+                  >
+                    <h3>Подключённые организации</h3>
+                    <p class="muted">
+                      Демонстрационные назначения ·
+                      {{ objectCount(selected) }} объектов
+                    </p>
+                    <table
+                      class="composition-table"
+                      aria-label="Подключённые организации"
+                    >
+                      <thead>
+                        <tr>
+                          <th>Организация</th>
+                          <th class="numeric">Объекты</th>
+                          <th class="numeric">В сутки</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr
+                          v-for="organization in selected.organizations"
+                          :key="organization.id"
+                        >
+                          <td>{{ organization.name }}</td>
+                          <td class="numeric">{{ organization.objects }}</td>
+                          <td class="numeric">
+                            {{
+                              money(
+                                (active?.priceCents ?? 0) *
+                                  organization.objects,
+                              )
+                            }}
+                          </td>
+                        </tr>
+                      </tbody>
+                      <tfoot>
+                        <tr>
+                          <th>Итого в сутки</th>
+                          <td class="numeric">{{ objectCount(selected) }}</td>
+                          <td class="numeric">
+                            {{ money(dailyAmount(selected, day)) }}
+                          </td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                    <p class="muted">
+                      {{
+                        active
+                          ? `${money(active.priceCents)} за объект × ${objectCount(selected)} объектов`
+                          : pending
+                            ? `Начисления начнутся с ${formatDate(pending.date)}`
+                            : "Начислений нет, пока у тарифа нет действующей версии"
+                      }}
+                    </p>
+                  </section>
                 </template>
               </Tabs.Panel>
               <Tabs.Panel value="history">
@@ -725,17 +739,13 @@ function stateLabel(rate: Rate) {
           </Tabs.Root>
         </div>
         <footer class="drawer-footer">
-          <template v-if="creating || editing"
-            ><Button.Root
-              class="button outlined"
-              @click="creating ? (mainOpen = false) : (editing = false)"
-              >Отмена</Button.Root
+          <template v-if="creating"
+            ><Button.Root class="button outlined" @click="mainOpen = false"
+              >Закрыть</Button.Root
             ><Button.Root
               v-slot="{ attrs }"
               renderless
-              :disabled="
-                creating ? !name.trim() || !editorFilled : !metadataDirty
-              "
+              :disabled="!name.trim() || !editorFilled"
               ><button
                 v-bind="attrs"
                 class="button primary"
@@ -747,10 +757,21 @@ function stateLabel(rate: Rate) {
             ></template
           ><template v-else
             ><Button.Root
-              v-if="active && !lockReason(active, day)"
               class="button danger-soft"
-              @click="requestDelete(active)"
-              ><Icon name="trash-red" />Удалить действующую версию</Button.Root
+              :disabled="!shownVersion || !!lockReason(shownVersion, day)"
+              :title="
+                shownVersion
+                  ? lockReason(shownVersion, day)
+                  : 'Нет версии для удаления'
+              "
+              @click="shownVersion && requestDelete(shownVersion)"
+              ><Icon name="trash-red" />{{
+                active
+                  ? "Удалить действующую версию"
+                  : pending
+                    ? "Удалить запланированную версию"
+                    : "Удалить версию"
+              }}</Button.Root
             ><span class="spacer" /><Button.Root
               class="button outlined"
               @click="mainOpen = false"
@@ -770,7 +791,7 @@ function stateLabel(rate: Rate) {
                 }}</Dialog.Title>
               </div>
               <Button.Root
-                class="icon-button"
+                class="icon-button close-button"
                 aria-label="Закрыть форму версии"
                 @click="nestedOpen = false"
                 ><Icon name="close"
@@ -782,15 +803,20 @@ function stateLabel(rate: Rate) {
               novalidate
               @submit.prevent="saveVersion"
             >
+              <RateDetails
+                v-model:name="name"
+                v-model:comment="comment"
+                :errors="errors"
+              />
               <VersionFields v-model="draft" :errors="errors" />
             </form>
             <footer class="drawer-footer">
               <Button.Root class="button outlined" @click="nestedOpen = false"
-                >Отмена</Button.Root
+                >Закрыть</Button.Root
               ><Button.Root
                 v-slot="{ attrs }"
                 renderless
-                :disabled="!editorFilled"
+                :disabled="!name.trim() || !editorFilled"
                 ><button
                   v-bind="attrs"
                   class="button primary"
@@ -825,7 +851,8 @@ function stateLabel(rate: Rate) {
     <Teleport
       :to="nestedOpen ? '.version-drawer' : mainOpen ? '.drawer' : 'body'"
       ><div v-if="notification" class="toast" role="status" aria-live="polite">
-        <span>{{ notification }}</span
+        <span class="toast-mark" aria-hidden="true">✓</span
+        ><span>{{ notification }}</span
         ><Button.Root
           class="icon-button"
           aria-label="Закрыть уведомление"
